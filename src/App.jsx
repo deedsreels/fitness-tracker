@@ -60,24 +60,32 @@ function App() {
   const weeklyLoss = daysIn > 7 && latestWeight ? totalLost / (daysIn / 7) : 0;
   const milestonesComplete = (data.milestones || []).filter(m => m.done).length;
 
+  const cycle = data.cycle || {};
+  const cycleDay = getCycleDay(cycle.periodStart, cycle.cycleLength || 28);
+  const cyclePhase = getPhase(cycleDay);
+
   return (
     <div style={{ minHeight: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 16px 80px" }}>
-        <div style={{ padding: "20px 0 12px", borderBottom: "1px solid #1e293b", marginBottom: 16 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
-        </div>
-        <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 12, marginBottom: 16, msOverflowStyle: "none", scrollbarWidth: "none" }}>
+      {/* Fixed bottom nav */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100, background: "#0f172a", borderTop: "1px solid #1e293b", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ display: "flex", overflowX: "auto", gap: 2, padding: "8px 8px 4px", msOverflowStyle: "none", scrollbarWidth: "none" }}>
           {TABS.map((t, i) => (
             <button key={t} onClick={() => setTab(i)} style={{
-              padding: "7px 14px", borderRadius: 20, border: "none", cursor: "pointer", whiteSpace: "nowrap",
-              background: tab === i ? "#2563eb" : "#1e293b", color: tab === i ? "#fff" : "#94a3b8",
-              fontSize: 13, fontWeight: tab === i ? 600 : 400, fontFamily: "inherit", transition: "all 0.2s"
+              flex: "0 0 auto", minWidth: 64, padding: "10px 14px", borderRadius: 10, border: "none", cursor: "pointer", whiteSpace: "nowrap",
+              background: tab === i ? "#2563eb" : "transparent", color: tab === i ? "#fff" : "#64748b",
+              fontSize: 12, fontWeight: tab === i ? 600 : 400, fontFamily: "inherit", transition: "all 0.15s",
+              WebkitTapHighlightColor: "transparent"
             }}>{t}</button>
           ))}
         </div>
-        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} />}
+      </div>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 16px 100px" }}>
+        <div style={{ padding: "16px 0 12px", borderBottom: "1px solid #1e293b", marginBottom: 16 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
+        </div>
+        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} />}
         {tab === 1 && <CycleTab data={data} save={save} />}
         {tab === 2 && <PlanTab />}
         {tab === 3 && <PostureTab data={data} save={save} />}
@@ -220,7 +228,8 @@ const RUCKING_PLAN = [
 ];
 
 function PlanTab() {
-  const [selectedDay, setSelectedDay] = useState(0);
+  // Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6 in WEEKLY_SCHEDULE
+  const [selectedDay, setSelectedDay] = useState(() => ({ 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 0:6 }[new Date().getDay()] ?? 0));
   const [section, setSection] = useState("weekly");
   const [weekRange, setWeekRange] = useState("w12");
   const weekLabels = { w12: "Weeks 1–2", w34: "Weeks 3–4", w56: "Weeks 5–6", w78: "Weeks 7–8", w910: "Weeks 9–10", w1112: "Weeks 11–12" };
@@ -672,9 +681,17 @@ function PostureTab({ data, save }) {
   </>);
 }
 
-function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, milestonesComplete, weightEntries }) {
+function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, milestonesComplete, weightEntries, cycleDay, cyclePhase }) {
   const chartData = weightEntries.map(([k, v]) => ({ date: new Date(k).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }), weight: parseFloat(v) }));
   const projectedFinal = latestWeight && weeklyLoss > 0 ? latestWeight - (weeklyLoss * daysLeft / 7) : null;
+
+  const today = new Date();
+  const todaySession = SESSION_ADJUSTMENTS.find(s => {
+    const dow = today.getDay();
+    const map = { "Sat — Lower Strength": 6, "Thu — Upper Push": 4, "Tue — Lower Stability": 2, "Sun — Upper Pull": 0 };
+    return map[s.session] === dow || (s.session === "Mon/Wed — Rucking" && (dow === 1 || dow === 3));
+  });
+  const phaseKey = cyclePhase ? (cyclePhase.name === "Menstrual" ? "menstrual" : cyclePhase.name === "Follicular" ? "follicular" : cyclePhase.name === "Ovulation" ? "ovulation" : cyclePhase.name === "Early Luteal" ? "earlyLuteal" : "lateLuteal") : null;
 
   return (<>
     <Card>
@@ -685,6 +702,37 @@ function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn,
         <StatBox label="Days Left" value={daysLeft} color={COLORS.orange} />
       </div>
     </Card>
+
+    {/* Cycle Phase Card */}
+    {cyclePhase ? (
+      <Card style={{ borderLeft: `4px solid ${cyclePhase.color}`, background: "#1e293b" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2, textTransform: "uppercase", letterSpacing: 0.5 }}>Cycle — Day {cycleDay}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: cyclePhase.color }}>{cyclePhase.icon} {cyclePhase.name}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{cyclePhase.days}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: cyclePhase.color, fontFamily: "'DM Mono', monospace" }}>{cyclePhase.intensity}</div>
+            <div style={{ fontSize: 10, color: "#64748b" }}>intensity</div>
+            <div style={{ fontSize: 12, color: cyclePhase.color, fontWeight: 600, marginTop: 2 }}>{cyclePhase.calories} kcal</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.5, marginBottom: todaySession ? 10 : 0 }}>{cyclePhase.training}</div>
+        {todaySession && phaseKey && (
+          <div style={{ borderTop: "1px solid #334155", paddingTop: 8, marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Today — {todaySession.session}</div>
+            <div style={{ fontSize: 13, color: cyclePhase.color, fontWeight: 500 }}>{todaySession[phaseKey]}</div>
+          </div>
+        )}
+      </Card>
+    ) : (
+      <Card style={{ borderLeft: "4px solid #334155" }}>
+        <div style={{ fontSize: 13, color: "#64748b" }}>
+          Set your period start date in the <span style={{ color: COLORS.pink, fontWeight: 600 }}>Cycle</span> tab to see today's training guidance here.
+        </div>
+      </Card>
+    )}
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
         <span style={{ fontSize: 13, color: "#94a3b8" }}>Progress to 57.5 kg</span>
