@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Area, AreaChart } from "recharts";
+import { supabase } from "./supabase";
 
 const TABS = ["Dashboard", "Cycle", "Plan", "Posture", "Weight", "Workouts", "Steps", "Nutrition", "Progress", "Milestones"];
 const COLORS = { blue: "#2563eb", teal: "#0d9488", orange: "#ea580c", purple: "#7c3aed", green: "#16a34a", red: "#dc2626", pink: "#ec4899", slate: "#334155", gold: "#eab308" };
@@ -7,9 +8,6 @@ const START_WEIGHT = 64;
 const TARGET_WEIGHT = 57.5;
 const START_DATE = new Date(2026, 2, 15);
 const END_DATE = new Date(2026, 5, 4);
-
-const storageGet = async (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } };
-const storageSet = async (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { console.error(e); } };
 
 const daysBetween = (a, b) => Math.max(0, Math.round((b - a) / 86400000));
 const formatDate = (d) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
@@ -28,25 +26,37 @@ const defaultMilestones = [
   { id: "ruck10kg", name: "8,000 Steps Rucked (10 kg)", target: "Week 5–6", category: "Rucking", done: false, date: "" },
 ];
 
-function App() {
+function App({ session }) {
   const [tab, setTab] = useState(0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const userId = session.user.id;
+
   const loadData = useCallback(async () => {
-    const saved = await storageGet("fitness-tracker-v2");
-    if (saved) { setData(saved); }
-    else {
+    const { data: row } = await supabase
+      .from("user_data")
+      .select("data")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (row?.data) {
+      setData(row.data);
+    } else {
       const init = { weights: {}, workouts: [], steps: {}, nutrition: {}, progress: {}, milestones: defaultMilestones, measurements: { start: {}, current: {} } };
       setData(init);
-      await storageSet("fitness-tracker-v2", init);
+      await supabase.from("user_data").upsert({ user_id: userId, data: init });
     }
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const save = async (newData) => { setData(newData); await storageSet("fitness-tracker-v2", newData); };
+  const save = async (newData) => {
+    setData(newData);
+    await supabase.from("user_data").upsert({ user_id: userId, data: newData });
+  };
+
+  const signOut = () => supabase.auth.signOut();
 
   if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}><div style={{ textAlign: "center" }}><div style={{ fontSize: 32, fontWeight: 700, letterSpacing: -1 }}>Loading...</div></div></div>;
 
@@ -54,9 +64,12 @@ function App() {
   const daysIn = daysBetween(START_DATE, today);
   const daysLeft = daysBetween(today, END_DATE);
 
+  const startWeight = parseFloat(data.settings?.startWeight) || START_WEIGHT;
+  const targetWeight = parseFloat(data.settings?.targetWeight) || TARGET_WEIGHT;
+
   const weightEntries = Object.entries(data.weights || {}).sort(([a], [b]) => a.localeCompare(b));
   const latestWeight = weightEntries.length > 0 ? parseFloat(weightEntries[weightEntries.length - 1][1]) : null;
-  const totalLost = latestWeight ? START_WEIGHT - latestWeight : 0;
+  const totalLost = latestWeight ? startWeight - latestWeight : 0;
   const weeklyLoss = daysIn > 7 && latestWeight ? totalLost / (daysIn / 7) : 0;
   const milestonesComplete = (data.milestones || []).filter(m => m.done).length;
 
@@ -81,11 +94,14 @@ function App() {
         </div>
       </div>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 16px 100px" }}>
-        <div style={{ padding: "16px 0 12px", borderBottom: "1px solid #1e293b", marginBottom: 16 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
+        <div style={{ padding: "16px 0 12px", borderBottom: "1px solid #1e293b", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
+            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
+          </div>
+          <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #334155", background: "transparent", color: "#64748b", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>Sign out</button>
         </div>
-        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} />}
+        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} startWeight={startWeight} targetWeight={targetWeight} />}
         {tab === 1 && <CycleTab data={data} save={save} />}
         {tab === 2 && <PlanTab />}
         {tab === 3 && <PostureTab data={data} save={save} />}
@@ -681,7 +697,7 @@ function PostureTab({ data, save }) {
   </>);
 }
 
-function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, milestonesComplete, weightEntries, cycleDay, cyclePhase }) {
+function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, milestonesComplete, weightEntries, cycleDay, cyclePhase, startWeight, targetWeight }) {
   const chartData = weightEntries.map(([k, v]) => ({ date: new Date(k).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }), weight: parseFloat(v) }));
   const projectedFinal = latestWeight && weeklyLoss > 0 ? latestWeight - (weeklyLoss * daysLeft / 7) : null;
 
@@ -735,16 +751,28 @@ function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn,
     )}
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 13, color: "#94a3b8" }}>Progress to 57.5 kg</span>
-        <span style={{ fontSize: 13, color: COLORS.blue, fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>{totalLost > 0 ? ((totalLost / (START_WEIGHT - TARGET_WEIGHT)) * 100).toFixed(0) : 0}%</span>
+        <span style={{ fontSize: 13, color: "#94a3b8" }}>Progress to {targetWeight} kg</span>
+        <span style={{ fontSize: 13, color: COLORS.blue, fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>{totalLost > 0 ? ((totalLost / (startWeight - targetWeight)) * 100).toFixed(0) : 0}%</span>
       </div>
-      <ProgressBar value={totalLost} max={START_WEIGHT - TARGET_WEIGHT} color={COLORS.blue} />
+      <ProgressBar value={totalLost} max={startWeight - targetWeight} color={COLORS.blue} />
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11, color: "#475569" }}>
-        <span>64.0 kg</span>
+        <span>{startWeight} kg</span>
         {projectedFinal && <span style={{ color: COLORS.teal }}>Est. final: {projectedFinal.toFixed(1)} kg</span>}
-        <span>57.5 kg</span>
+        <span>{targetWeight} kg</span>
       </div>
     </Card>
+
+    {/* Settings — only show if start weight not yet set */}
+    {!data.settings?.startWeight && (
+      <Card style={{ borderLeft: "4px solid #eab308" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#eab308", marginBottom: 8 }}>Set your starting stats</div>
+        <InputRow label="Start weight (kg)" value={data.settings?.startWeight || ""} placeholder="e.g. 64.0"
+          onChange={v => save({ ...data, settings: { ...data.settings, startWeight: v } })} />
+        <InputRow label="Target weight (kg)" value={data.settings?.targetWeight || ""} placeholder="e.g. 57.5"
+          onChange={v => save({ ...data, settings: { ...data.settings, targetWeight: v } })} />
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>This card disappears once your start weight is saved.</div>
+      </Card>
+    )}
     {chartData.length > 1 && (
       <Card>
         <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 8 }}>Weight Trend</div>
