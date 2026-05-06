@@ -70,8 +70,11 @@ function App({ session }) {
   if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}><div style={{ textAlign: "center" }}><div style={{ fontSize: 32, fontWeight: 700, letterSpacing: -1 }}>Loading...</div></div></div>;
 
   const today = new Date();
-  const daysIn = daysBetween(START_DATE, today);
-  const daysLeft = daysBetween(today, END_DATE);
+  const startDate = data.settings?.startDate ? new Date(data.settings.startDate) : START_DATE;
+  const endDate = data.settings?.endDate ? new Date(data.settings.endDate) : END_DATE;
+  const daysIn = daysBetween(startDate, today);
+  const daysLeft = daysBetween(today, endDate);
+  const totalDays = daysBetween(startDate, endDate);
 
   const startWeight = parseFloat(data.settings?.startWeight) || START_WEIGHT;
   const targetWeight = parseFloat(data.settings?.targetWeight) || TARGET_WEIGHT;
@@ -106,15 +109,15 @@ function App({ session }) {
         <div style={{ padding: "16px 0 12px", borderBottom: "1px solid #1e293b", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
-            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
+            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : startWeight.toFixed(1)}kg · Day {daysIn} of {totalDays}</div>
           </div>
           {isCloud && <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #334155", background: "transparent", color: "#64748b", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>Sign out</button>}
         </div>
-        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} startWeight={startWeight} targetWeight={targetWeight} />}
+        {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} totalDays={totalDays} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} startWeight={startWeight} targetWeight={targetWeight} />}
         {tab === 1 && <CycleTab data={data} save={save} />}
         {tab === 2 && <PlanTab />}
         {tab === 3 && <PostureTab data={data} save={save} />}
-        {tab === 4 && <WeightTab data={data} save={save} weightEntries={weightEntries} />}
+        {tab === 4 && <WeightTab data={data} save={save} weightEntries={weightEntries} startDate={startDate} />}
         {tab === 5 && <WorkoutTab data={data} save={save} />}
         {tab === 6 && <StepsTab data={data} save={save} />}
         {tab === 7 && <NutritionTab data={data} save={save} />}
@@ -140,7 +143,7 @@ const InputRow = ({ label, value, onChange, type = "number", placeholder = "", s
   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
     <span style={{ flex: 1, fontSize: 13, color: "#94a3b8" }}>{label}</span>
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} step={step}
-      style={{ width: 90, padding: "6px 10px", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0", fontSize: 14, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none" }} />
+      style={{ width: type === "date" ? 140 : 90, padding: "6px 10px", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0", fontSize: type === "date" ? 12 : 14, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none" }} />
   </div>
 );
 
@@ -706,7 +709,7 @@ function PostureTab({ data, save }) {
   </>);
 }
 
-function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, milestonesComplete, weightEntries, cycleDay, cyclePhase, startWeight, targetWeight }) {
+function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn, daysLeft, totalDays, milestonesComplete, weightEntries, cycleDay, cyclePhase, startWeight, targetWeight }) {
   const chartData = weightEntries.map(([k, v]) => ({ date: new Date(k).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }), weight: parseFloat(v) }));
   const projectedFinal = latestWeight && weeklyLoss > 0 ? latestWeight - (weeklyLoss * daysLeft / 7) : null;
 
@@ -780,6 +783,10 @@ function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn,
         onChange={v => save({ ...data, settings: { ...data.settings, startWeight: v } })} />
       <InputRow label="Target weight (kg)" value={data.settings?.targetWeight || ""} placeholder="e.g. 57.5"
         onChange={v => save({ ...data, settings: { ...data.settings, targetWeight: v } })} />
+      <InputRow label="Program start date" value={data.settings?.startDate || ""} placeholder="2026-03-15"
+        type="date" onChange={v => save({ ...data, settings: { ...data.settings, startDate: v } })} />
+      <InputRow label="Program end date" value={data.settings?.endDate || ""} placeholder="2026-06-04"
+        type="date" onChange={v => save({ ...data, settings: { ...data.settings, endDate: v } })} />
     </Card>
     {chartData.length > 1 && (
       <Card>
@@ -818,9 +825,9 @@ function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn,
   </>);
 }
 
-function WeightTab({ data, save, weightEntries }) {
-  const [week, setWeek] = useState(() => Math.min(8, Math.max(0, Math.ceil(daysBetween(START_DATE, new Date()) / 7) - 1)));
-  const weekStart = new Date(START_DATE.getTime() + week * 7 * 86400000);
+function WeightTab({ data, save, weightEntries, startDate = START_DATE }) {
+  const [week, setWeek] = useState(() => Math.min(8, Math.max(0, Math.ceil(daysBetween(startDate, new Date()) / 7) - 1)));
+  const weekStart = new Date(startDate.getTime() + week * 7 * 86400000);
   const days = Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + (i + 1) * 86400000));
   const chartData = weightEntries.map(([k, v]) => ({ date: new Date(k).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }), weight: parseFloat(v) }));
   const weekWeights = days.map(d => data.weights?.[dayKey(d)]).filter(Boolean).map(Number);
