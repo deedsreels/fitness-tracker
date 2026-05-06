@@ -9,6 +9,7 @@ function Root() {
   const [session, setSession] = useState(undefined);
 
   useEffect(() => {
+    if (!supabase) { setSession(null); return; }
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => subscription.unsubscribe();
@@ -19,6 +20,9 @@ function Root() {
       <div style={{ color: "#475569", fontFamily: "sans-serif" }}>Loading…</div>
     </div>
   );
+
+  // No Supabase configured — run in local-only mode
+  if (!supabase) return <App session={null} />;
 
   return session ? <App session={session} /> : <Auth />;
 }

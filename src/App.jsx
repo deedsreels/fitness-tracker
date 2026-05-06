@@ -31,32 +31,41 @@ function App({ session }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const userId = session.user.id;
+  const userId = session?.user?.id ?? "local";
+  const isCloud = !!supabase && !!session;
+
+  const defaultData = { weights: {}, workouts: [], steps: {}, nutrition: {}, progress: {}, milestones: defaultMilestones, measurements: { start: {}, current: {} }, settings: {} };
 
   const loadData = useCallback(async () => {
-    const { data: row } = await supabase
-      .from("user_data")
-      .select("data")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (row?.data) {
-      setData(row.data);
+    if (isCloud) {
+      const { data: row } = await supabase
+        .from("user_data").select("data").eq("user_id", userId).maybeSingle();
+      if (row?.data) { setData(row.data); }
+      else {
+        setData(defaultData);
+        await supabase.from("user_data").upsert({ user_id: userId, data: defaultData });
+      }
     } else {
-      const init = { weights: {}, workouts: [], steps: {}, nutrition: {}, progress: {}, milestones: defaultMilestones, measurements: { start: {}, current: {} } };
-      setData(init);
-      await supabase.from("user_data").upsert({ user_id: userId, data: init });
+      try {
+        const v = localStorage.getItem("fitness-tracker-v2");
+        setData(v ? { ...defaultData, ...JSON.parse(v) } : defaultData);
+      } catch { setData(defaultData); }
     }
     setLoading(false);
-  }, [userId]);
+  }, [userId, isCloud]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const save = async (newData) => {
     setData(newData);
-    await supabase.from("user_data").upsert({ user_id: userId, data: newData });
+    if (isCloud) {
+      await supabase.from("user_data").upsert({ user_id: userId, data: newData });
+    } else {
+      try { localStorage.setItem("fitness-tracker-v2", JSON.stringify(newData)); } catch (e) { console.error(e); }
+    }
   };
 
-  const signOut = () => supabase.auth.signOut();
+  const signOut = () => isCloud ? supabase.auth.signOut() : null;
 
   if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0f172a", color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif" }}><div style={{ textAlign: "center" }}><div style={{ fontSize: 32, fontWeight: 700, letterSpacing: -1 }}>Loading...</div></div></div>;
 
@@ -99,7 +108,7 @@ function App({ session }) {
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: "#f8fafc" }}>Fitness Tracker</div>
             <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>157cm · {latestWeight ? latestWeight.toFixed(1) : "64.0"}kg · Day {daysIn} of 81</div>
           </div>
-          <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #334155", background: "transparent", color: "#64748b", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>Sign out</button>
+          {isCloud && <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #334155", background: "transparent", color: "#64748b", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>Sign out</button>}
         </div>
         {tab === 0 && <DashboardTab data={data} save={save} latestWeight={latestWeight} totalLost={totalLost} weeklyLoss={weeklyLoss} daysIn={daysIn} daysLeft={daysLeft} milestonesComplete={milestonesComplete} weightEntries={weightEntries} cycleDay={cycleDay} cyclePhase={cyclePhase} startWeight={startWeight} targetWeight={targetWeight} />}
         {tab === 1 && <CycleTab data={data} save={save} />}
@@ -762,17 +771,16 @@ function DashboardTab({ data, save, latestWeight, totalLost, weeklyLoss, daysIn,
       </div>
     </Card>
 
-    {/* Settings — only show if start weight not yet set */}
-    {!data.settings?.startWeight && (
-      <Card style={{ borderLeft: "4px solid #eab308" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#eab308", marginBottom: 8 }}>Set your starting stats</div>
-        <InputRow label="Start weight (kg)" value={data.settings?.startWeight || ""} placeholder="e.g. 64.0"
-          onChange={v => save({ ...data, settings: { ...data.settings, startWeight: v } })} />
-        <InputRow label="Target weight (kg)" value={data.settings?.targetWeight || ""} placeholder="e.g. 57.5"
-          onChange={v => save({ ...data, settings: { ...data.settings, targetWeight: v } })} />
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>This card disappears once your start weight is saved.</div>
-      </Card>
-    )}
+    {/* Settings */}
+    <Card style={{ borderLeft: `4px solid ${!data.settings?.startWeight ? "#eab308" : "#334155"}` }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: !data.settings?.startWeight ? "#eab308" : "#94a3b8", marginBottom: 8 }}>
+        {!data.settings?.startWeight ? "⚠️ Set your starting stats" : "Settings"}
+      </div>
+      <InputRow label="Start weight (kg)" value={data.settings?.startWeight || ""} placeholder="e.g. 64.0"
+        onChange={v => save({ ...data, settings: { ...data.settings, startWeight: v } })} />
+      <InputRow label="Target weight (kg)" value={data.settings?.targetWeight || ""} placeholder="e.g. 57.5"
+        onChange={v => save({ ...data, settings: { ...data.settings, targetWeight: v } })} />
+    </Card>
     {chartData.length > 1 && (
       <Card>
         <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 8 }}>Weight Trend</div>
