@@ -31,12 +31,24 @@ const WORKOUT_TEMPLATES = [
 ];
 const COLORS = { blue: "#2563eb", teal: "#0d9488", orange: "#ea580c", purple: "#7c3aed", green: "#16a34a", red: "#dc2626", pink: "#ec4899", slate: "#334155", gold: "#eab308" };
 const BAND_COLORS = ["Yellow", "Orange", "Red", "Green", "Blue", "Purple", "Black"];
-const EMPTY_EX = () => ({ name: "", loadType: "kg", sets: [{reps:"",load:""},{reps:"",load:""},{reps:"",load:""},{reps:"",load:""}], completed: false, notes: "" });
+const EMPTY_EX = () => ({ name: "", loadType: "kg", sets: [{reps:"",load:""},{reps:"",load:""},{reps:"",load:""},{reps:"",load:""}], completed: false, notes: "", videoUrl: "" });
 const normalizeExercises = (exercises) => (exercises || []).map(ex => ({
   ...ex,
   loadType: ex.loadType || "kg",
+  videoUrl: ex.videoUrl || "",
   sets: (ex.sets || ["","","",""]).map(s => typeof s === "string" ? { reps: s, load: "" } : s),
 }));
+const youtubeSearchUrl = (name) => `https://www.youtube.com/results?search_query=${encodeURIComponent(name + " exercise tutorial")}`;
+function VideoBtn({ name, videoUrl, style = {} }) {
+  const href = videoUrl || youtubeSearchUrl(name);
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+      title={videoUrl ? "Watch tutorial" : `Search YouTube: "${name} exercise tutorial"`}
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "#ff000022", border: "1px solid #ff000044", color: "#ff4444", textDecoration: "none", fontSize: 13, flexShrink: 0, ...style }}>
+      ▶
+    </a>
+  );
+}
 const THEMES = {
   dark: {
     bg: "#0f172a",
@@ -446,9 +458,12 @@ function PlanTab() {
             </div>
             {day.exercises.map((ex, i) => (
               <div key={i} style={{ background: i % 2 === 0 ? "#0f172a" : "transparent", borderRadius: 8, padding: "10px", marginBottom: 2 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", flex: 1 }}>{ex.name}</div>
-                  {ex.rest !== "—" && <span style={{ fontSize: 10, color: "var(--muted-even)", background: "var(--surface)", padding: "2px 6px", borderRadius: 4, marginLeft: 8, whiteSpace: "nowrap" }}>Rest: {ex.rest}</span>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {ex.rest !== "—" && <span style={{ fontSize: 10, color: "var(--muted-even)", background: "var(--surface)", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>Rest: {ex.rest}</span>}
+                    <VideoBtn name={ex.name} videoUrl="" />
+                  </div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: day.color, fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>{ex[weekRange]}</div>
                 <div style={{ fontSize: 11, color: "var(--muted-darker)", lineHeight: 1.4 }}>{ex.notes}</div>
@@ -776,9 +791,12 @@ function PostureTab({ data, save }) {
           <div style={{ fontSize: 13, fontWeight: 700, color, marginBottom: 10 }}>{title}</div>
           {POSTURE_EXERCISES[key].map((ex, i) => (
             <div key={i} style={{ background: i % 2 === 0 ? "#0f172a" : "transparent", borderRadius: 8, padding: "10px", marginBottom: 2 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{ex.name}</div>
-                <span style={{ fontSize: 10, color: "var(--muted-even)", background: "var(--surface)", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{ex.freq}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", flex: 1 }}>{ex.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, color: "var(--muted-even)", background: "var(--surface)", padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{ex.freq}</span>
+                  <VideoBtn name={ex.name} videoUrl="" />
+                </div>
               </div>
               <div style={{ fontSize: 13, fontWeight: 500, color, fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>{ex[weekRange]}</div>
               <div style={{ fontSize: 11, color: "var(--muted-darker)", lineHeight: 1.4 }}>{ex.notes}</div>
@@ -948,10 +966,11 @@ function DashboardTab({ data, save, latestWeight, weightShift, weeklyShift, late
                   {ex.notes && <div style={{ fontSize: 10, color: WEEKLY_SCHEDULE[planDay].color, marginTop: 1, fontFamily: "'DM Mono', monospace" }}>{ex.notes.split(" — ")[0]}</div>}
                 </div>
               </label>
-              <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                 {["kg","band"].map(lt => (
                   <button key={lt} onClick={() => updateDashEx(idx, "loadType", lt)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${ex.loadType===lt ? (lt==="band" ? COLORS.purple : COLORS.blue) : "var(--border)"}`, background: ex.loadType===lt ? (lt==="band" ? "#2d1b69" : "#1e3a5f") : "transparent", color: ex.loadType===lt ? "#fff" : "var(--muted)", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>{lt==="band" ? "Band" : "kg"}</button>
                 ))}
+                <VideoBtn name={ex.name} videoUrl={ex.videoUrl || ""} />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
@@ -1001,6 +1020,7 @@ function DashboardTab({ data, save, latestWeight, weightShift, weeklyShift, late
                   <div style={{ fontSize: 12, fontWeight: 500, color: done ? "#a5b4fc" : "var(--text)", textDecoration: done ? "line-through" : "none" }}>{ex.name}</div>
                   <div style={{ fontSize: 10, color, fontFamily: "'DM Mono', monospace", marginTop: 1 }}>{ex[weekKey]} · {ex.freq}</div>
                 </div>
+                <VideoBtn name={ex.name} videoUrl="" />
               </div>
             );
           })}
@@ -1353,13 +1373,14 @@ function WorkoutTab({ data, save }) {
                 <input placeholder="Exercise name" value={ex.name} onChange={e => updateExercise(idx, "name", e.target.value)}
                   style={{ flex: 1, padding: "8px 10px", borderRadius: 12, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
               </label>
-              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
                 {["kg","band"].map(lt => (
                   <button key={lt} onClick={() => updateExercise(idx, "loadType", lt)}
                     style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${ex.loadType === lt ? (lt === "band" ? COLORS.purple : COLORS.blue) : "var(--border)"}`, background: ex.loadType === lt ? (lt === "band" ? "#2d1b69" : "#1e3a5f") : "transparent", color: ex.loadType === lt ? "#fff" : "var(--muted)", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit" }}>
                     {lt === "band" ? "Band" : "kg"}
                   </button>
                 ))}
+                {ex.name.trim() && <VideoBtn name={ex.name} videoUrl={ex.videoUrl || ""} />}
               </div>
               <button onClick={() => removeExercise(idx)} style={{ background: "var(--border)", border: "none", color: "var(--muted)", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 12 }}>Remove</button>
             </div>
@@ -1386,7 +1407,9 @@ function WorkoutTab({ data, save }) {
               })}
             </div>
             <textarea value={ex.notes} onChange={e => updateExercise(idx, "notes", e.target.value)} placeholder="Exercise notes / tempo"
-              rows={2} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--muted)", fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
+              rows={2} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--muted)", fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical", marginBottom: 8 }} />
+            <input type="url" value={ex.videoUrl || ""} onChange={e => updateExercise(idx, "videoUrl", e.target.value)} placeholder="Paste tutorial video URL (optional — leave blank to use YouTube search)"
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: `1px solid ${ex.videoUrl ? "#ff000044" : "var(--border)"}`, background: "var(--input-bg)", color: ex.videoUrl ? "#ff6666" : "var(--muted)", fontSize: 11, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
           </div>
         );
       })}
