@@ -1,11 +1,22 @@
-# React + Vite
+# Fitness Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A local-first fitness tracker built with React and Vite. It stores workout logs, body-composition data, and progress metrics in browser storage and supports light/dark theme toggling.
 
-Currently, two official plugins are available:
+## Deployment
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+This project is deployed to GitHub:
+
+- Repository: https://github.com/deedsreels/fitness-tracker
+- Branch: `main`
+
+## About
+
+The app includes:
+
+- Local-only persistence using `localStorage`
+- Workout templates and exercise checklists
+- Body fat, weight, and consistency tracking
+- Light/dark theme support with CSS custom properties
 
 ## React Compiler
 

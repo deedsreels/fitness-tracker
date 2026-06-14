@@ -2,33 +2,41 @@ import { useState, useEffect, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Area, AreaChart } from "recharts";
 
 const TABS = ["Dashboard", "Cycle", "Plan", "Posture", "Weight", "Workouts", "Steps", "Nutrition", "Progress", "Milestones"];
+const mkSets = (repsArr) => repsArr.map(r => ({ reps: r, load: "" }));
 const WORKOUT_TEMPLATES = [
   { key: "Lower Strength", label: "Lower Strength", exercises: [
-    { name: "Goblet Squat", sets: ["10", "10", "10", "10"], completed: false, notes: "Use slow tempo and full depth." },
-    { name: "Hip Thrust", sets: ["12", "12", "10", "10"], completed: false, notes: "Pause at the top." },
-    { name: "Reverse Lunge", sets: ["10", "10", "10", "10"], completed: false, notes: "Keep torso upright." },
+    { name: "Goblet Squat", loadType: "kg", sets: mkSets(["10","10","10","10"]), completed: false, notes: "Use slow tempo and full depth." },
+    { name: "Hip Thrust", loadType: "kg", sets: mkSets(["12","12","10","10"]), completed: false, notes: "Pause at the top." },
+    { name: "Reverse Lunge", loadType: "kg", sets: mkSets(["10","10","10","10"]), completed: false, notes: "Keep torso upright." },
   ]},
   { key: "Upper Push", label: "Upper Push", exercises: [
-    { name: "Push-Up", sets: ["12", "12", "10", "10"], completed: false, notes: "Use a bar or floor push-up." },
-    { name: "Overhead Press", sets: ["10", "10", "8", "8"], completed: false, notes: "Keep core tight." },
-    { name: "Tricep Dip", sets: ["12", "12", "10", "10"], completed: false, notes: "Control the descent." },
+    { name: "Push-Up", loadType: "kg", sets: mkSets(["12","12","10","10"]), completed: false, notes: "Use a bar or floor push-up." },
+    { name: "Overhead Press", loadType: "kg", sets: mkSets(["10","10","8","8"]), completed: false, notes: "Keep core tight." },
+    { name: "Tricep Dip", loadType: "band", sets: mkSets(["12","12","10","10"]), completed: false, notes: "Control the descent." },
   ]},
   { key: "Upper Pull", label: "Upper Pull", exercises: [
-    { name: "Australian Row", sets: ["12", "12", "10", "10"], completed: false, notes: "Use a low angle for more reps." },
-    { name: "Negative Pull-Up", sets: ["5", "5", "4", "4"], completed: false, notes: "Slow 4-5 sec descent." },
-    { name: "Bicep Curl", sets: ["12", "12", "10", "10"], completed: false, notes: "No swinging." },
+    { name: "Australian Row", loadType: "kg", sets: mkSets(["12","12","10","10"]), completed: false, notes: "Use a low angle for more reps." },
+    { name: "Negative Pull-Up", loadType: "band", sets: mkSets(["5","5","4","4"]), completed: false, notes: "Slow 4-5 sec descent." },
+    { name: "Bicep Curl", loadType: "kg", sets: mkSets(["12","12","10","10"]), completed: false, notes: "No swinging." },
   ]},
   { key: "Ruck/Walk", label: "Ruck/Walk", exercises: [
-    { name: "Rucking", sets: ["8k", "8k", "—", "—"], completed: false, notes: "Log distance or steps." },
-    { name: "Balance drill", sets: ["3", "3", "3", "3"], completed: false, notes: "Wobble board or single-leg hold." },
+    { name: "Rucking", loadType: "kg", sets: mkSets(["8k","8k","—","—"]), completed: false, notes: "Log distance or steps." },
+    { name: "Balance drill", loadType: "kg", sets: mkSets(["3","3","3","3"]), completed: false, notes: "Wobble board or single-leg hold." },
   ]},
   { key: "Hip Rehab", label: "Hip Rehab", exercises: [
-    { name: "Clamshell", sets: ["15", "15", "15", "15"], completed: false, notes: "Band above knees." },
-    { name: "Glute Bridge", sets: ["12", "12", "12", "12"], completed: false, notes: "Squeeze at the top." },
-    { name: "Wobble Board", sets: ["30s", "30s", "30s", "30s"], completed: false, notes: "Single-leg if stable." },
+    { name: "Clamshell", loadType: "band", sets: mkSets(["15","15","15","15"]), completed: false, notes: "Band above knees." },
+    { name: "Glute Bridge", loadType: "kg", sets: mkSets(["12","12","12","12"]), completed: false, notes: "Squeeze at the top." },
+    { name: "Wobble Board", loadType: "kg", sets: mkSets(["30s","30s","30s","30s"]), completed: false, notes: "Single-leg if stable." },
   ]},
 ];
 const COLORS = { blue: "#2563eb", teal: "#0d9488", orange: "#ea580c", purple: "#7c3aed", green: "#16a34a", red: "#dc2626", pink: "#ec4899", slate: "#334155", gold: "#eab308" };
+const BAND_COLORS = ["Yellow", "Orange", "Red", "Green", "Blue", "Purple", "Black"];
+const EMPTY_EX = () => ({ name: "", loadType: "kg", sets: [{reps:"",load:""},{reps:"",load:""},{reps:"",load:""},{reps:"",load:""}], completed: false, notes: "" });
+const normalizeExercises = (exercises) => (exercises || []).map(ex => ({
+  ...ex,
+  loadType: ex.loadType || "kg",
+  sets: (ex.sets || ["","","",""]).map(s => typeof s === "string" ? { reps: s, load: "" } : s),
+}));
 const THEMES = {
   dark: {
     bg: "#0f172a",
@@ -839,6 +847,40 @@ function PostureTab({ data, save }) {
 }
 
 function DashboardTab({ data, save, latestWeight, weightShift, weeklyShift, latestBodyFat, bodyFatShift, bodyFatGoal, bodyFatEntries, daysIn, daysLeft, totalDays, milestonesComplete, weightEntries, cycleDay, cyclePhase, startWeight, targetWeight }) {
+  const [planDay, setPlanDay] = useState(() => ({1:0,2:1,3:2,4:3,5:4,6:5,0:6}[new Date().getDay()] ?? 0));
+  const startDateObj = data.settings?.startDate ? new Date(data.settings.startDate) : START_DATE;
+  const wkNum = Math.min(12, Math.max(1, Math.ceil(daysBetween(startDateObj, new Date()) / 7)));
+  const weekKey = wkNum <= 2 ? "w12" : wkNum <= 4 ? "w34" : wkNum <= 6 ? "w56" : wkNum <= 8 ? "w78" : wkNum <= 10 ? "w910" : "w1112";
+  const makeDashSession = (pidx) => {
+    const plan = WEEKLY_SCHEDULE[pidx];
+    return { date: dayKey(new Date()), type: plan.focus, template: "Custom", calories: "", bodyWeight: "", duration: "", notes: "",
+      exercises: plan.exercises.map(ex => ({ ...EMPTY_EX(), name: ex.name, notes: `${ex[weekKey]}${ex.notes ? ` — ${ex.notes}` : ""}` })) };
+  };
+  const [dashSession, setDashSession] = useState(() => makeDashSession({1:0,2:1,3:2,4:3,5:4,6:5,0:6}[new Date().getDay()] ?? 0));
+  const swapPlan = (idx) => { setPlanDay(idx); setDashSession(makeDashSession(idx)); };
+  const updateDashEx = (idx, field, val) => { const ex = [...dashSession.exercises]; ex[idx][field] = val; setDashSession({ ...dashSession, exercises: ex }); };
+  const updateDashSet = (idx, si, sf, val) => { const ex = [...dashSession.exercises]; ex[idx].sets[si] = { ...ex[idx].sets[si], [sf]: val }; setDashSession({ ...dashSession, exercises: ex }); };
+  const toggleDashEx = (idx) => { const ex = [...dashSession.exercises]; ex[idx].completed = !ex[idx].completed; setDashSession({ ...dashSession, exercises: ex }); };
+  const saveDashWorkout = async () => {
+    const filtered = dashSession.exercises.filter(e => e.name.trim() && (e.completed || e.sets.some(s => s.reps || s.load)));
+    if (!filtered.length) return;
+    await save({ ...data, workouts: [...(data.workouts || []), { ...dashSession, exercises: filtered, id: Date.now() }] });
+    setDashSession(makeDashSession(planDay));
+  };
+  const todayKey = dayKey(new Date());
+  const todayPostureLog = data.posture?.log?.[todayKey] || {};
+  const postureExDone = todayPostureLog.exercises || {};
+  const togglePostureEx = (name) => {
+    const newDone = { ...postureExDone, [name]: !postureExDone[name] };
+    save({ ...data, posture: { ...(data.posture || {}), log: { ...(data.posture?.log || {}), [todayKey]: { ...todayPostureLog, exercises: newDone } } } });
+  };
+  const markAllPostureDone = () => {
+    const newDone = {};
+    [...POSTURE_EXERCISES.apt, ...POSTURE_EXERCISES.fhp].forEach(ex => { newDone[ex.name] = true; });
+    save({ ...data, posture: { ...(data.posture || {}), log: { ...(data.posture?.log || {}), [todayKey]: { ...todayPostureLog, exercises: newDone } } } });
+  };
+  const allPostureEx = [...POSTURE_EXERCISES.apt, ...POSTURE_EXERCISES.fhp];
+  const postureDoneCount = allPostureEx.filter(ex => postureExDone[ex.name]).length;
   const chartData = weightEntries.map(([k, v]) => ({ date: new Date(k).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }), weight: parseFloat(v) }));
   const projectedFinal = latestWeight && weeklyShift !== 0 ? latestWeight + (weeklyShift * daysLeft / 7) : null;
 
@@ -876,6 +918,99 @@ function DashboardTab({ data, save, latestWeight, weightShift, weeklyShift, late
   const phaseKey = cyclePhase ? (cyclePhase.name === "Menstrual" ? "menstrual" : cyclePhase.name === "Follicular" ? "follicular" : cyclePhase.name === "Ovulation" ? "ovulation" : cyclePhase.name === "Early Luteal" ? "earlyLuteal" : "lateLuteal") : null;
 
   return (<>
+    <Card style={{ borderTop: `3px solid ${WEEKLY_SCHEDULE[planDay].color}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, color: "var(--muted)", marginBottom: 2 }}>Today's Workout</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: WEEKLY_SCHEDULE[planDay].color }}>{WEEKLY_SCHEDULE[planDay].icon} {WEEKLY_SCHEDULE[planDay].day} — {WEEKLY_SCHEDULE[planDay].focus}</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{WEEKLY_SCHEDULE[planDay].duration} · Week {wkNum}</div>
+        </div>
+        <span style={{ fontSize: 11, color: "var(--muted-darker)", paddingTop: 4 }}>Swap day:</span>
+      </div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 14, overflowX: "auto" }}>
+        {WEEKLY_SCHEDULE.map((d, i) => (
+          <button key={d.day} onClick={() => swapPlan(i)} style={{ flex: 1, minWidth: 38, padding: "6px 2px", borderRadius: 8, border: planDay === i ? `2px solid ${d.color}` : "2px solid transparent", background: planDay === i ? d.color + "22" : "var(--surface-alt)", cursor: "pointer", textAlign: "center" }}>
+            <div style={{ fontSize: 13 }}>{d.icon}</div>
+            <div style={{ fontSize: 9, color: planDay === i ? d.color : "var(--muted)", fontWeight: planDay === i ? 700 : 400, marginTop: 2 }}>{d.day.slice(0,3)}</div>
+          </button>
+        ))}
+      </div>
+      {dashSession.exercises.map((ex, idx) => {
+        const isBand = ex.loadType === "band";
+        const sets = ex.sets || [{reps:"",load:""},{reps:"",load:""},{reps:"",load:""},{reps:"",load:""}];
+        return (
+          <div key={idx} style={{ background: ex.completed ? "#152d16" : "var(--bg)", borderRadius: 12, padding: 12, marginBottom: 8, border: ex.completed ? "1px solid #16a34a" : "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", flex: 1, minWidth: 140 }}>
+                <input type="checkbox" checked={ex.completed} onChange={() => toggleDashEx(idx)} style={{ width: 18, height: 18, borderRadius: 4, accentColor: COLORS.green, flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{ex.name}</div>
+                  {ex.notes && <div style={{ fontSize: 10, color: WEEKLY_SCHEDULE[planDay].color, marginTop: 1, fontFamily: "'DM Mono', monospace" }}>{ex.notes.split(" — ")[0]}</div>}
+                </div>
+              </label>
+              <div style={{ display: "flex", gap: 4 }}>
+                {["kg","band"].map(lt => (
+                  <button key={lt} onClick={() => updateDashEx(idx, "loadType", lt)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${ex.loadType===lt ? (lt==="band" ? COLORS.purple : COLORS.blue) : "var(--border)"}`, background: ex.loadType===lt ? (lt==="band" ? "#2d1b69" : "#1e3a5f") : "transparent", color: ex.loadType===lt ? "#fff" : "var(--muted)", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>{lt==="band" ? "Band" : "kg"}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+              {[0,1,2,3].map(s => (
+                <div key={s} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontSize: 9, color: "var(--muted-darker)", textTransform: "uppercase", textAlign: "center" }}>S{s+1}</div>
+                  <input type="number" placeholder="Reps" value={sets[s]?.reps||""} onChange={e => updateDashSet(idx,s,"reps",e.target.value)} style={{ width: "100%", padding: "6px 2px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+                  {isBand ? (
+                    <select value={sets[s]?.load||""} onChange={e => updateDashSet(idx,s,"load",e.target.value)} style={{ width: "100%", padding: "6px 2px", borderRadius: 8, border: `1px solid ${sets[s]?.load ? COLORS.purple : "var(--border)"}`, background: sets[s]?.load ? "#2d1b69" : "transparent", color: sets[s]?.load ? "#d4b8ff" : "var(--muted)", fontSize: 10, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+                      <option value="">Band</option>
+                      {BAND_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : (
+                    <input type="number" step="0.5" placeholder="kg" value={sets[s]?.load||""} onChange={e => updateDashSet(idx,s,"load",e.target.value)} style={{ width: "100%", padding: "6px 2px", borderRadius: 8, border: `1px solid ${sets[s]?.load ? COLORS.blue : "var(--border)"}`, background: "transparent", color: sets[s]?.load ? COLORS.blue : "var(--muted)", fontSize: 12, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+        <input type="number" placeholder="Calories burned" value={dashSession.calories} onChange={e => setDashSession({...dashSession, calories: e.target.value})} style={{ flex: 1, minWidth: 110, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+        <input type="text" placeholder="Duration (min)" value={dashSession.duration} onChange={e => setDashSession({...dashSession, duration: e.target.value})} style={{ flex: 1, minWidth: 110, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+        <button onClick={saveDashWorkout} style={{ flex: 1, minWidth: 130, padding: "10px 14px", borderRadius: 12, border: "none", background: COLORS.blue, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>Save Workout</button>
+      </div>
+    </Card>
+
+    <Card style={{ borderTop: "3px solid #6366f1" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, color: "var(--muted)", marginBottom: 2 }}>Today's Posture</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#6366f1" }}>Posture Exercises</div>
+        </div>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "#6366f1", fontFamily: "'DM Mono', monospace" }}>{postureDoneCount}/{allPostureEx.length}</span>
+      </div>
+      <ProgressBar value={postureDoneCount} max={allPostureEx.length} color="#6366f1" />
+      {[["apt","#818cf8","APT Correction"],["fhp","#6366f1","FHP Correction"]].map(([key, color, label]) => (
+        <div key={key} style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>{label}</div>
+          {POSTURE_EXERCISES[key].map(ex => {
+            const done = !!postureExDone[ex.name];
+            return (
+              <div key={ex.name} onClick={() => togglePostureEx(ex.name)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 4, borderRadius: 10, cursor: "pointer", background: done ? "#6366f111" : "var(--bg)", border: `1px solid ${done ? "#6366f133" : "var(--border)"}` }}>
+                <div style={{ width: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: done ? "#6366f1" : "var(--border)", color: "#fff", fontSize: 11, flexShrink: 0 }}>{done ? "✓" : ""}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: done ? "#a5b4fc" : "var(--text)", textDecoration: done ? "line-through" : "none" }}>{ex.name}</div>
+                  <div style={{ fontSize: 10, color, fontFamily: "'DM Mono', monospace", marginTop: 1 }}>{ex[weekKey]} · {ex.freq}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {postureDoneCount < allPostureEx.length && (
+        <button onClick={markAllPostureDone} style={{ width: "100%", marginTop: 10, padding: "8px", borderRadius: 10, border: "1px solid #6366f144", background: "#6366f111", color: "#6366f1", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>Mark all done</button>
+      )}
+    </Card>
+
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 14 }}>
       <Card style={{ minHeight: 180 }}>
         <SectionHeader title="Overview" subtitle="Track weight, weekly workouts and progress at a glance" />
@@ -1109,7 +1244,7 @@ function WorkoutTab({ data, save }) {
     bodyWeight: "",
     duration: "",
     notes: "",
-    exercises: [{ name: "", sets: ["", "", "", ""], completed: false, notes: "" }],
+    exercises: [EMPTY_EX()],
   });
   const sessionTypes = ["Lower Strength", "Upper Push", "Upper Pull", "Lower Stability", "Ruck/Walk", "Hip Rehab"];
   const templateOptions = ["Custom", ...WORKOUT_TEMPLATES.map(t => t.key)];
@@ -1130,7 +1265,7 @@ function WorkoutTab({ data, save }) {
     });
   };
 
-  const addExercise = () => setSession({ ...session, exercises: [...session.exercises, { name: "", sets: ["", "", "", ""], completed: false, notes: "" }] });
+  const addExercise = () => setSession({ ...session, exercises: [...session.exercises, EMPTY_EX()] });
   const fillRecentWorkout = () => {
     if (!lastWorkout) return;
     const { id, ...rest } = lastWorkout;
@@ -1138,13 +1273,17 @@ function WorkoutTab({ data, save }) {
       ...rest,
       date: dayKey(new Date()),
       template: "Custom",
-      exercises: rest.exercises.map(ex => ({ ...ex, completed: false })),
+      exercises: normalizeExercises(rest.exercises).map(ex => ({ ...ex, completed: false })),
     });
   };
   const updateExercise = (idx, field, val) => {
     const ex = [...session.exercises];
-    if (field === "name" || field === "notes" || field === "completed") ex[idx][field] = val;
-    else ex[idx].sets[field] = val;
+    ex[idx][field] = val;
+    setSession({ ...session, exercises: ex, template: "Custom" });
+  };
+  const updateExerciseSet = (idx, setIdx, setField, val) => {
+    const ex = [...session.exercises];
+    ex[idx].sets[setIdx] = { ...ex[idx].sets[setIdx], [setField]: val };
     setSession({ ...session, exercises: ex, template: "Custom" });
   };
   const toggleExerciseComplete = (idx) => {
@@ -1154,14 +1293,14 @@ function WorkoutTab({ data, save }) {
   };
   const removeExercise = (idx) => {
     const ex = session.exercises.filter((_, i) => i !== idx);
-    setSession({ ...session, exercises: ex.length ? ex : [{ name: "", sets: ["", "", "", ""], completed: false, notes: "" }], template: "Custom" });
+    setSession({ ...session, exercises: ex.length ? ex : [EMPTY_EX()], template: "Custom" });
   };
 
   const saveSession = async () => {
     const filtered = session.exercises.filter(e => e.name.trim());
     if (!filtered.length) return;
     await save({ ...data, workouts: [...(data.workouts || []), { ...session, exercises: filtered, id: Date.now() }] });
-    setSession({ date: dayKey(new Date()), type: "Lower Strength", calories: "", bodyWeight: "", duration: "", notes: "", exercises: [{ name: "", sets: ["", "", "", ""], completed: false, notes: "" }] });
+    setSession({ date: dayKey(new Date()), type: "Lower Strength", calories: "", bodyWeight: "", duration: "", notes: "", exercises: [EMPTY_EX()] });
   };
 
   return (<>
@@ -1202,30 +1341,55 @@ function WorkoutTab({ data, save }) {
           <button onClick={addExercise} style={{ padding: "10px 14px", borderRadius: 12, border: "1px dashed var(--border)", background: "transparent", color: "var(--muted-darker)", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>+ Add exercise</button>
         </div>
       </div>
-      {session.exercises.map((ex, idx) => (
-        <div key={idx} style={{ background: ex.completed ? "#152d16" : "var(--bg)", borderRadius: 14, padding: 14, marginBottom: 12, border: ex.completed ? "1px solid #16a34a" : "1px solid var(--border)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: 1, minWidth: 200 }}>
-              <input type="checkbox" checked={ex.completed} onChange={() => toggleExerciseComplete(idx)}
-                style={{ width: 18, height: 18, borderRadius: 4, accentColor: COLORS.green }} />
-              <input placeholder="Exercise name" value={ex.name} onChange={e => updateExercise(idx, "name", e.target.value)}
-                style={{ flex: 1, padding: "8px 10px", borderRadius: 12, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
-            </label>
-            <button onClick={() => removeExercise(idx)} style={{ background: "var(--border)", border: "none", color: "var(--muted)", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 12 }}>Remove</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 10 }}>
-            {[0, 1, 2, 3].map(s => (
-              <div key={s} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontSize: 10, color: "var(--muted-darker)", textTransform: "uppercase", letterSpacing: 0.5 }}>Set {s + 1}</div>
-                <input value={ex.sets[s]} onChange={e => updateExercise(idx, s, e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 13, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none" }} />
+      {session.exercises.map((ex, idx) => {
+        const isBand = ex.loadType === "band";
+        const sets = normalizeExercises([ex])[0].sets;
+        return (
+          <div key={idx} style={{ background: ex.completed ? "#152d16" : "var(--bg)", borderRadius: 14, padding: 14, marginBottom: 12, border: ex.completed ? "1px solid #16a34a" : "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: 1, minWidth: 160 }}>
+                <input type="checkbox" checked={ex.completed} onChange={() => toggleExerciseComplete(idx)}
+                  style={{ width: 18, height: 18, borderRadius: 4, accentColor: COLORS.green, flexShrink: 0 }} />
+                <input placeholder="Exercise name" value={ex.name} onChange={e => updateExercise(idx, "name", e.target.value)}
+                  style={{ flex: 1, padding: "8px 10px", borderRadius: 12, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+              </label>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {["kg","band"].map(lt => (
+                  <button key={lt} onClick={() => updateExercise(idx, "loadType", lt)}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${ex.loadType === lt ? (lt === "band" ? COLORS.purple : COLORS.blue) : "var(--border)"}`, background: ex.loadType === lt ? (lt === "band" ? "#2d1b69" : "#1e3a5f") : "transparent", color: ex.loadType === lt ? "#fff" : "var(--muted)", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit" }}>
+                    {lt === "band" ? "Band" : "kg"}
+                  </button>
+                ))}
               </div>
-            ))}
+              <button onClick={() => removeExercise(idx)} style={{ background: "var(--border)", border: "none", color: "var(--muted)", borderRadius: 10, padding: "8px 12px", cursor: "pointer", fontSize: 12 }}>Remove</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+              {[0, 1, 2, 3].map(s => {
+                const set = sets[s];
+                return (
+                  <div key={s} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ fontSize: 10, color: "var(--muted-darker)", textTransform: "uppercase", letterSpacing: 0.5, textAlign: "center" }}>Set {s + 1}</div>
+                    <input type="number" placeholder="Reps" value={set.reps || ""} onChange={e => updateExerciseSet(idx, s, "reps", e.target.value)}
+                      style={{ width: "100%", padding: "8px 4px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: 13, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+                    {isBand ? (
+                      <select value={set.load || ""} onChange={e => updateExerciseSet(idx, s, "load", e.target.value)}
+                        style={{ width: "100%", padding: "8px 4px", borderRadius: 10, border: `1px solid ${set.load ? COLORS.purple : "var(--border)"}`, background: set.load ? "#2d1b69" : "transparent", color: set.load ? "#d4b8ff" : "var(--muted)", fontSize: 11, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+                        <option value="">Band...</option>
+                        {BAND_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input type="number" step="0.5" placeholder="kg" value={set.load || ""} onChange={e => updateExerciseSet(idx, s, "load", e.target.value)}
+                        style={{ width: "100%", padding: "8px 4px", borderRadius: 10, border: `1px solid ${set.load ? COLORS.blue : "var(--border)"}`, background: "transparent", color: set.load ? COLORS.blue : "var(--muted)", fontSize: 13, fontFamily: "'DM Mono', monospace", textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <textarea value={ex.notes} onChange={e => updateExercise(idx, "notes", e.target.value)} placeholder="Exercise notes / tempo"
+              rows={2} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--muted)", fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
           </div>
-          <textarea value={ex.notes} onChange={e => updateExercise(idx, "notes", e.target.value)} placeholder="Exercise notes / load / tempo"
-            rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--input-bg)", color: "var(--muted)", fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
-        </div>
-      ))}
+        );
+      })}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
         <button onClick={saveSession} style={{ minWidth: 160, padding: "12px 16px", borderRadius: 12, border: "none", background: COLORS.blue, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}>Save workout</button>
       </div>
@@ -1247,15 +1411,27 @@ function WorkoutTab({ data, save }) {
               </div>
             </div>
             {w.notes && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, marginBottom: 10 }}>{w.notes}</div>}
-            {w.exercises.map((ex, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: ex.completed ? COLORS.green : "var(--border)", color: "#fff", fontSize: 11 }}>{ex.completed ? "✓" : ""}</span>
-                  <span style={{ color: "var(--text)" }}>{ex.name}</span>
+            {normalizeExercises(w.exercises).map((ex, i) => {
+              const setStr = ex.sets
+                .filter(s => s.reps || s.load)
+                .map(s => {
+                  const parts = [];
+                  if (s.reps) parts.push(s.reps);
+                  if (s.load) parts.push(ex.loadType === "band" ? s.load : s.load + "kg");
+                  return parts.join("×");
+                })
+                .join(" | ");
+              return (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: ex.completed ? COLORS.green : "var(--border)", color: "#fff", fontSize: 11 }}>{ex.completed ? "✓" : ""}</span>
+                    <span style={{ color: "var(--text)" }}>{ex.name}</span>
+                    {ex.loadType === "band" && <span style={{ fontSize: 10, color: COLORS.purple, background: "#2d1b69", padding: "1px 5px", borderRadius: 4 }}>band</span>}
+                  </div>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11 }}>{setStr || "—"}</span>
                 </div>
-                <span>{ex.sets.filter(Boolean).join(" | ")}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ))}
       </Card>
